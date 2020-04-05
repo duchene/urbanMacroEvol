@@ -1,0 +1,72 @@
+require(caper)
+require(phytools)
+require(phylometrics)
+require(diversitree)
+
+load("all.data.Rdata")
+
+set.seed(123)
+
+# Tests of phylogenetic signal in continuous traits
+# Colour dichromatism
+phylosig(trcol1, dcol1[trcol1$tip.label,]$diff.color, method = "K", test = T)
+phylosig(trcol1, dcol1[trcol1$tip.label,]$diff.color, method = "lambda", test = T)
+
+# Body mass
+phylosig(trcol1, dcol1[trcol1$tip.label,]$bodymg, method = "K", test = T)
+phylosig(trcol1, dcol1[trcol1$tip.label,]$bodymg, method = "lambda", test = T)
+
+# Brain size
+phylosig(trcol2, dcol2[trcol2$tip.label,]$brain.size.g, method = "K", test = T)
+phylosig(trcol2, dcol2[trcol2$tip.label,]$brain.size.g, method = "lambda", test = T)
+
+# Test of phylogenetic signal in urban colonization
+dcol1$species <- rownames(dcol1)
+datcomp <- comparative.data(phy = trcol1, data = dcol1, names.col=species)
+datfpd <- phylo.d(data=datcomp, binvar = urban.binomial, permut = 1000)
+
+# Plot results of test of phylogenetic signal in urban colonization
+#plot(datfpd)
+
+# Test whether the clustering across the tree is lower than expected under brownian motion.
+treestat(trcol1, state = dcol1[trcol1$tip.label,]$urban.binomial, simplify = F, func = sscd, traitevol="TBM", a=1000, alternative="greater")
+
+# Test whether the number of origins in the tree is greater than expected under brownian motion.
+treestat(trcol1, state = dcol1[trcol1$tip.label,]$urban.binomial, simplify = F, func = noto, traitevol="TBM", a=1000, alternative="less")
+
+# BiSSE analyses
+trcol1 <- ladderize(trcol1)
+sampfrac1 <- 506 / 5966
+urban1 <- dcol1$urban.binomial
+names(urban1) <- rownames(dcol1)
+
+bislik <- make.bisse(trcol1, urban1, sampling.f=sampfrac1)
+p <- starting.point.bisse(trcol1)
+fit.full <- find.mle(bislik, p)
+
+lik.base <- constrain(bislik, lambda0 ~ lambda1, mu0 ~ mu1, q01 ~ q10)
+fit.base <- find.mle(lik.base, p[argnames(lik.base)])
+
+lik.sp <- constrain(bislik, lambda0 ~ lambda1)
+fit.sp <- find.mle(lik.sp, p[argnames(lik.sp)])
+
+lik.mu <- constrain(bislik, mu0 ~ mu1)
+fit.mu <- find.mle(lik.mu, p[argnames(lik.mu)])
+
+lik.q <- constrain(bislik, q01 ~ q10)
+fit.q <- find.mle(lik.q, p[argnames(lik.q)])
+
+modelstable <- round(rbind(full=coef(fit.full), equal.sp=coef(fit.sp, TRUE), equal.mu = coef(fit.mu, TRUE), equal.q = coef(fit.q, TRUE), base = coef(fit.base, TRUE)), 3)
+modelstest <- anova(fit.full, equal.sp = fit.sp, equal.mu = fit.mu, equal.q = fit.q, base = fit.base)
+pvals <- round(p.adjust(modelstest[2:5,5], method = "fdr", n = 5), 4)
+
+# Plot reconstructed states from BiSSE model
+urbanasr <- asr.marginal(bislik, coef(fit.full))
+urbanasrvec <- apply(urbanasr, 2, function(x) which(x == max(x)))
+
+rbPal <- colorRampPalette(c('red', 'black'))
+colvar2 <- rbPal(10)[as.numeric(cut(as.vector(urbanasr[1,]), breaks = 10))]
+
+#plot(trcol1, type = "fan", show.tip.label=FALSE, no.margin=TRUE, edge.width = 2)
+#tiplabels(col=urban1[trcol1$tip.label]+1, pch=19, adj=0.5)
+#nodelabels(col=colvar2, pch=19)
